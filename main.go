@@ -145,7 +145,7 @@ func run() error {
 
 				var content string
 
-				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        %sFile{\n", strings.Title(*variablePrefix))))
+				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        {\n")))
 				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            Dir: \"%s\",\n", filepath.ToSlash(dir))))
 				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            File: \"%s\",\n", filepath.ToSlash(cleanFile))))
 				if len(ba) > buf.Len() {
