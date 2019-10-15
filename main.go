@@ -30,7 +30,10 @@ func init() {
 }
 
 func (i *pathlist) String() string {
-	return "my string representation"
+	if i == nil {
+		return ""
+	}
+	return strings.Join(dirs, ",")
 }
 
 func (i *pathlist) Find(path string) int {
@@ -66,11 +69,13 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"os\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"path/filepath\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"strings\"\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"time\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    )\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("type %sFile struct {\n", strings.Title(*variablePrefix))))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    Dir string\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    File string\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    FileDate string\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    Content string\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("var %sDirs []string\n", strings.Title(*variablePrefix))))
@@ -122,6 +127,16 @@ func run() error {
 					return err
 				}
 
+				fd, err := common.FileDate(file)
+				if common.Error(err) {
+					return err
+				}
+
+				fileDate, err := fd.MarshalText()
+				if common.Error(err) {
+					return err
+				}
+
 				buf := new(bytes.Buffer)
 
 				w := zip.NewWriter(buf)
@@ -148,6 +163,7 @@ func run() error {
 				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        {\n")))
 				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            Dir: \"%s\",\n", filepath.ToSlash(dir))))
 				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            File: \"%s\",\n", filepath.ToSlash(cleanFile))))
+				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            FileDate: \"%s\",\n", fileDate)))
 				if len(ba) > buf.Len() {
 					common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            Content: \"zip:\"+\n")))
 					content = hex.EncodeToString(buf.Bytes())
@@ -173,18 +189,36 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("func (this *%sFile) Unpack(path string) error {\n", strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	fn := filepath.ToSlash(filepath.Join(path, filepath.Base(this.File)))\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("func (this *BinpackFile) Unpack(path string) error {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	fileName := filepath.ToSlash(filepath.Join(path, filepath.Base(this.File)))\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	file, err := os.Create(fn)\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	var fileDate time.Time\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	err := fileDate.UnmarshalText([]byte(this.FileDate))\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	if common.Error(err) {\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		return err\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	defer func() {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		common.DebugError(file.Close())\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}()\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	fs, err := os.Stat(fileName)\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	b := err != nil\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	if !b {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		b = fileDate != fs.ModTime()\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	if !b {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		common.DebugFunc(\"Unpack file %s --> %s [skip]\", this.File, fileName)\n", "%%s", "%%s")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		return nil\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	common.DebugFunc(\"Unpack file %s --> %s\", this.File, fileName)\n", "%%s", "%%s")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	if strings.HasPrefix(this.Content, \"zip:\") {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		file, err := os.Create(fileName)\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		if common.Error(err) {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			return err\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		}\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		ba, err := hex.DecodeString(this.Content[4:])\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		if common.Error(err) {\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			return err\n")))
@@ -211,15 +245,23 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		return nil\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		err = file.Close()\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		if common.Error(err) {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			return err\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		}\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	} else {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		ba, err := hex.DecodeString(this.Content)\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		if common.Error(err) {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			return err\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		}\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		err = ioutil.WriteFile(fileName, ba, common.FileMode(true, true, false))\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		if common.Error(err) {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			return err\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	ba, err := hex.DecodeString(this.Content)\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	if common.Error(err) {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		return err\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	err = ioutil.WriteFile(fn, ba, common.FileMode(true, true, false))\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	err = os.Chtimes(fileName, fileDate, fileDate)\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	if common.Error(err) {\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		return err\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
@@ -227,30 +269,31 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	return nil\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("func UnpackDir(src string,dest string) error {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("func UnpackDir(src string, dest string) error {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	common.DebugFunc(\"Unpack dir %s --> %s\", src, dest)\n", "%%s", "%%s")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    for _, file := range %sFiles {\n", strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        if file.Dir == src {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            fn := filepath.ToSlash(filepath.Join(dest,file.Dir,file.File))\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	for _, file := range BinpackFiles {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		if file.Dir == src {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			fn := filepath.ToSlash(filepath.Join(dest, file.Dir, file.File))\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            path := filepath.Dir(fn)\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            b, err := common.FileExists(path)\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            if common.Error(err) {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("                return err\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            }\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			path := filepath.Dir(fn)\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			b, err := common.FileExists(path)\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			if common.Error(err) {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("				return err\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            if !b {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("                err = os.MkdirAll(path, common.FileMode(true, true, true))\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("                if common.Error(err) {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("                    return err\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("                }\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            }\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			if !b {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("				err = os.MkdirAll(path, common.FileMode(true, true, true))\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("				if common.Error(err) {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("					return err\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("				}\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            err = file.Unpack(path)\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        }\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    }\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			err = file.Unpack(path)\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		}\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    return nil\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	return nil\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 
@@ -269,10 +312,10 @@ func run() error {
 }
 
 func main() {
-	//UnpackDir("static","d:/temp")
+	//UnpackDir("/go/src", "d:/temp")
 	//os.Exit(0)
 
 	defer common.Done()
 
-	common.Run(nil)
+	common.Run([]string{"i"})
 }
