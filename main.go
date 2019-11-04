@@ -16,14 +16,19 @@ import (
 
 type pathlist []string
 
-var dirs pathlist
+type fileitem struct {
+	fullname string
+	relname  string
+}
+
+var paths pathlist
 var packageName *string
 var variablePrefix *string
 var fileName *string
 
 func init() {
 	common.Init("1.0.0", "2018", "Tool to embedd resource files into go source files", "mpetavy", common.APACHE, false, nil, nil, run, 0)
-	flag.Var(&dirs, "i", "include directory or file")
+	flag.Var(&paths, "i", "include directory or file")
 	packageName = flag.String("p", "main", "package name")
 	variablePrefix = flag.String("v", "binpack", "variable prefix")
 	fileName = flag.String("f", "binpack.go", "go file name")
@@ -33,22 +38,29 @@ func (i *pathlist) String() string {
 	if i == nil {
 		return ""
 	}
-	return strings.Join(dirs, ",")
-}
-
-func (i *pathlist) Find(path string) int {
-	for i, item := range *i {
-		if item == path {
-			return i
-		}
-	}
-
-	return -1
+	return strings.Join(paths, ",")
 }
 
 func (i *pathlist) Set(value string) error {
 	*i = append(*i, value)
 	return nil
+}
+
+func filenameToVar(path string) string {
+	if strings.HasPrefix(path, string(filepath.Separator)) {
+		path = path[1:]
+	}
+
+	path = strings.ReplaceAll(path, "-", " ")
+	path = strings.ReplaceAll(path, "/", "_")
+	path = strings.ReplaceAll(path, "\\", "_")
+	path = strings.ReplaceAll(path, ".", " ")
+
+	path = strings.Title(path)
+
+	path = strings.ReplaceAll(path, " ", "")
+
+	return strings.Title(*variablePrefix) + "_" + path
 }
 
 func run() error {
@@ -63,7 +75,6 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"archive/zip\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"bytes\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"encoding/hex\"\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"fmt\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"github.com/mpetavy/common\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"io\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"io/ioutil\"\n")))
@@ -74,124 +85,118 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    )\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("type %sFile struct {\n", strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    Dir string\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    File string\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    FileDate string\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    MimeType string\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    Content string\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("}\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("var %sDirs []string\n", strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("var %sFiles []%sFile\n", strings.Title(*variablePrefix), strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, "\n"))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("func init() {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    %sDirs = make([]string,0)\n", strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    %sFiles = make([]%sFile,0)\n", strings.Title(*variablePrefix), strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, "\n"))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("var (\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    %sFiles = make(map[string]*%sFile)\n", strings.Title(*variablePrefix), strings.Title(*variablePrefix))))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 
-	for _, dir := range dirs {
-		common.Info("binpack dir: %s", dir)
+	files := make([]fileitem, 0)
 
-		files := make(pathlist, 0)
-
+	for _, dir := range paths {
 		recursive := !strings.HasSuffix(dir, string(filepath.Separator))
 		if !recursive {
 			dir = dir[:len(dir)-1]
 		}
 
 		cleanDir := common.CleanPath(dir)
-		if common.ContainsWildcard(cleanDir) {
-			cleanDir = filepath.Dir(cleanDir)
-		}
 
-		err := common.WalkFilepath(common.CleanPath(dir), recursive, func(file string) error {
-			files = append(files, file)
+		err := common.WalkFilepath(cleanDir, recursive, func(file string) error {
+			files = append(files, fileitem{
+				fullname: file,
+				relname:  file[len(filepath.Dir(cleanDir))+1:],
+			})
 
 			return nil
 		})
 
-		if common.ContainsWildcard(dir) {
-			dir = filepath.Dir(dir)
+		if common.Error(err) {
+			return err
 		}
+	}
 
+	for _, fileItem := range files {
+		varname := filenameToVar(fileItem.relname)
+
+		common.Info("binpack file: %s", fileItem.relname)
+
+		ba, err := ioutil.ReadFile(fileItem.fullname)
 		if common.Error(err) {
 			return err
 		}
 
-		if len(files) > 0 {
-			common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    %sDirs = append(%sDirs,\"%s\")\n", strings.Title(*variablePrefix), strings.Title(*variablePrefix), filepath.ToSlash(dir))))
+		mt := common.DetectMimeType(fileItem.fullname, ba)
 
-			common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    %sFiles = append(%sFiles,[]%sFile{\n", strings.Title(*variablePrefix), strings.Title(*variablePrefix), strings.Title(*variablePrefix))))
-			for _, file := range files {
-				common.Info("binpack file: %s", file)
-
-				ba, err := ioutil.ReadFile(file)
-				if common.Error(err) {
-					return err
-				}
-
-				mt := common.DetectMimeType(file, ba)
-
-				fd, err := common.FileDate(file)
-				if common.Error(err) {
-					return err
-				}
-
-				fileDate, err := fd.MarshalText()
-				if common.Error(err) {
-					return err
-				}
-
-				buf := new(bytes.Buffer)
-
-				w := zip.NewWriter(buf)
-				f, err := w.Create(file)
-				if common.Error(err) {
-					return err
-				}
-
-				_, err = f.Write(ba)
-				if common.Error(err) {
-					return err
-				}
-
-				err = w.Close()
-				if common.Error(err) {
-					return err
-				}
-
-				cleanFile := common.CleanPath(file)
-				cleanFile = cleanFile[len(cleanDir)+1:]
-
-				var content string
-
-				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        {\n")))
-				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            Dir: \"%s\",\n", filepath.ToSlash(dir))))
-				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            File: \"%s\",\n", filepath.ToSlash(cleanFile))))
-				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            FileDate: \"%s\",\n", fileDate)))
-				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            MimeType: \"%s\",\n", mt.MimeType)))
-
-				if len(ba) > buf.Len() {
-					common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            Content: \"zip:\"+\n")))
-					content = hex.EncodeToString(buf.Bytes())
-				} else {
-					common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            Content:\n")))
-					content = hex.EncodeToString(ba)
-				}
-
-				for index := 0; index < len(content); index += 1000 {
-					end := common.Min(index+1000, len(content))
-					ch := "+"
-
-					if end == len(content) {
-						ch = ","
-					}
-					common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("                \"%s\"%s\n", content[index:end], ch)))
-				}
-				common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("            },\n")))
-			}
-			common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        }...,)\n")))
+		fd, err := common.FileDate(fileItem.fullname)
+		if common.Error(err) {
+			return err
 		}
+
+		fileDate, err := fd.MarshalText()
+		if common.Error(err) {
+			return err
+		}
+
+		buf := new(bytes.Buffer)
+
+		zipWriter := zip.NewWriter(buf)
+		zipFile, err := zipWriter.Create(fileItem.relname)
+		if common.Error(err) {
+			return err
+		}
+
+		_, err = zipFile.Write(ba)
+		if common.Error(err) {
+			return err
+		}
+
+		err = zipWriter.Close()
+		if common.Error(err) {
+			return err
+		}
+
+		var content string
+
+		common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    %s = &%sFile{\n", varname, strings.Title(*variablePrefix))))
+		common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        File: \"%s\",\n", filepath.ToSlash(fileItem.relname))))
+		common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        FileDate: \"%s\",\n", fileDate)))
+		common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        MimeType: \"%s\",\n", mt.MimeType)))
+
+		if len(ba) > buf.Len() {
+			common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        Content: \"zip:\"+\n")))
+			content = hex.EncodeToString(buf.Bytes())
+		} else {
+			common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        Content:\n")))
+			content = hex.EncodeToString(ba)
+		}
+
+		for index := 0; index < len(content); index += 1000 {
+			end := common.Min(index+1000, len(content))
+			ch := "+"
+
+			if end == len(content) {
+				ch = ","
+			}
+			common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("                \"%s\"%s\n", content[index:end], ch)))
+		}
+		common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    }\n")))
 	}
+
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf(")\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("func init() {")))
+
+	for _, fileItem := range files {
+		varname := filenameToVar(fileItem.relname)
+
+		common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    %sFiles[\"%s\"] = %s\n", strings.Title(*variablePrefix), filepath.ToSlash(fileItem.relname), varname)))
+	}
+
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("func (this *%sFile) Unpack() ([]byte, error) {\n", strings.Title(*variablePrefix))))
@@ -277,25 +282,12 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	return nil\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("func FindPack(dir string,file string) (*%sFile,error) {\n", strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	common.DebugFunc(\"%s/%s\",dir,file)\n", "%%s", "%%s")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	for _, f := range %sFiles {\n", strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		if f.Dir == dir && f.File == file {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			return &f,nil\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		}\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	return nil,fmt.Errorf(\"unknown pack: %s/%s\",dir,file)\n", "%%s", "%%s")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("}\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("func UnpackDir(src string, dest string) error {\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	common.DebugFunc(\"Unpack dir %s --> %s\", src, dest)\n", "%%s", "%%s")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	for _, file := range %sFiles {\n", strings.Title(*variablePrefix))))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		if file.Dir == src {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			fn := filepath.ToSlash(filepath.Join(dest, file.Dir, file.File))\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		if strings.HasPrefix(file.File,src) {\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			fn := filepath.ToSlash(filepath.Clean(filepath.Join(dest, file.File)))\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			path := filepath.Dir(fn)\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			b, err := common.FileExists(path)\n")))
