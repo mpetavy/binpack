@@ -278,7 +278,7 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("				return ba, err\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			defer func() {\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("				common.DebugError(i.Close())\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("				common.WarnError(i.Close())\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			}()\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("			_, err = io.Copy(&buf, i)\n")))
