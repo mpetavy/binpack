@@ -27,7 +27,7 @@ var variablePrefix *string
 var fileName *string
 
 func init() {
-	common.Init("1.0.0", "2018", "Tool to embedd resource files into go source files", "mpetavy", common.APACHE, false, nil, nil, run, 0)
+	common.Init("1.0.0", "2018", "Tool to embedd resource files into go source files", "mpetavy", fmt.Sprintf("https://github.com/mpetavy/%s", common.Title()), common.APACHE, false, nil, nil, run, 0)
 	flag.Var(&paths, "i", "include directory or file")
 	packageName = flag.String("p", "main", "package name")
 	variablePrefix = flag.String("v", "binpack", "variable prefix")
