@@ -25,6 +25,7 @@ var paths pathlist
 var packageName *string
 var variablePrefix *string
 var fileName *string
+var useZip *bool
 
 func init() {
 	common.Init("1.0.0", "2018", "Tool to embedd resource files into go source files", "mpetavy", fmt.Sprintf("https://github.com/mpetavy/%s", common.Title()), common.APACHE, false, nil, nil, run, 0)
@@ -32,6 +33,7 @@ func init() {
 	packageName = flag.String("p", "main", "package name")
 	variablePrefix = flag.String("v", "binpack", "variable prefix")
 	fileName = flag.String("f", "binpack.go", "go file name")
+	useZip = flag.Bool("z", true, "create zipped content")
 }
 
 func (i *pathlist) String() string {
@@ -147,20 +149,22 @@ func run() error {
 
 		buf := new(bytes.Buffer)
 
-		zipWriter := zip.NewWriter(buf)
-		zipFile, err := zipWriter.Create(fileItem.relname)
-		if common.Error(err) {
-			return err
-		}
+		if *useZip {
+			zipWriter := zip.NewWriter(buf)
+			zipFile, err := zipWriter.Create(fileItem.relname)
+			if common.Error(err) {
+				return err
+			}
 
-		_, err = zipFile.Write(ba)
-		if common.Error(err) {
-			return err
-		}
+			_, err = zipFile.Write(ba)
+			if common.Error(err) {
+				return err
+			}
 
-		err = zipWriter.Close()
-		if common.Error(err) {
-			return err
+			err = zipWriter.Close()
+			if common.Error(err) {
+				return err
+			}
 		}
 
 		var content string
@@ -170,7 +174,7 @@ func run() error {
 		common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        FileDate: \"%s\",\n", fileDate)))
 		common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        MimeType: \"%s\",\n", mt.MimeType)))
 
-		if len(ba) > buf.Len() {
+		if *useZip && len(ba) > buf.Len() {
 			common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        Content: \"zip:\"+\n")))
 			content = hex.EncodeToString(buf.Bytes())
 		} else {
