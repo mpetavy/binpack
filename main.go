@@ -109,7 +109,7 @@ func run() error {
 
 		cleanDir := common.CleanPath(dir)
 
-		err := common.WalkFilepath(cleanDir, recursive, func(file string) error {
+		err := common.WalkFilepath(cleanDir, recursive, false, func(file string) error {
 			files = append(files, fileitem{
 				fullname: file,
 				relname:  file[len(filepath.Dir(cleanDir))+1:],
