@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/mpetavy/common"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,7 +80,6 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"fmt\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"github.com/mpetavy/common\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"io\"\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"io/ioutil\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"os\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"path/filepath\"\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	\"strings\"\n")))
@@ -128,7 +126,7 @@ func run() error {
 
 		common.Info("binpack file: %s", fileItem.relname)
 
-		ba, err := ioutil.ReadFile(fileItem.fullname)
+		ba, err := os.ReadFile(fileItem.fullname)
 		if common.Error(err) {
 			return err
 		}
@@ -241,7 +239,7 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("    if b {\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("      common.Warn(\"Read resource from filesystem: %s\",filename)\n", "%%s")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("      ba, err := ioutil.ReadFile(filename)\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("      ba, err := os.ReadFile(filename)\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("      if err == nil {\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("        return ba, nil\n")))
@@ -299,7 +297,7 @@ func run() error {
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		return err\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("\n")))
-	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	err = ioutil.WriteFile(fileName, ba, common.DefaultFileMode)\n")))
+	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	err = os.WriteFile(fileName, ba, common.DefaultFileMode)\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	if common.Error(err) {\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("		return err\n")))
 	common.Ignore(fmt.Fprintf(goFile, fmt.Sprintf("	}\n")))
